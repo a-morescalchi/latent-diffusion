@@ -1,10 +1,10 @@
-from xml.parsers.expat import model
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from omegaconf import OmegaConf
 from tqdm import tqdm
 import os
+import matplotlib.pyplot as plt
 
 # Imports from the latent-diffusion repo
 from ldm.util import instantiate_from_config
@@ -58,7 +58,6 @@ def load_model(config_path, ckpt_path):
         print(f"Unexpected keys: {len(u)}")
         
     model.to(DEVICE)
-    model.eval()
     return model
 
 def train(BATCH_SIZE = 4, LR = 1e-4, EPOCHS = 100, rank=4, alpha=4):
@@ -119,11 +118,16 @@ def train(BATCH_SIZE = 4, LR = 1e-4, EPOCHS = 100, rank=4, alpha=4):
     loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
 
     # 4. Training Loop
-    unet.train()  # Instead of model.train()
-    model.eval() 
-    
+    model.eval()
+    for mod in unet.modules():
+        if 'lora' in mod.__class__.__name__.lower():
+            mod.train()  # Instead of model.train()
+
+
+    loss_history = []
     for epoch in range(EPOCHS):
         pbar = tqdm(loader, desc=f"Epoch {epoch}")
+        loss_partial = []
         for x in pbar:
             x = x.to(DEVICE)
             
@@ -161,8 +165,10 @@ def train(BATCH_SIZE = 4, LR = 1e-4, EPOCHS = 100, rank=4, alpha=4):
                 print("WARNING: No gradients!")
 
             optimizer.step()
-            
+            loss_partial.append(loss.item())
             pbar.set_postfix(loss=loss.item())
+
+        loss_history.append(sum(loss_partial)/len(loss_partial))
 
         # Save LoRA weights only
         # You'll need to write logic to save ONLY your lora layers, not the whole model
@@ -180,6 +186,12 @@ def train(BATCH_SIZE = 4, LR = 1e-4, EPOCHS = 100, rank=4, alpha=4):
     print(f"Epoch {epoch}: Average LoRA weight change: {avg_change:.6f}")
     torch.save(unet.state_dict(), os.path.join(OUTPUT_DIR, f"lora_final.pt"))
     print('Weights saved in ', OUTPUT_DIR+"/lora_final.pt")
+
+    plt.plot(range(EPOCHS), loss_history)
+    plt.xlabel("Iteration")
+    plt.ylabel("Loss")
+    plt.title("Training Loss History")
+    plt.show()
 
 if __name__ == "__main__":
     train()

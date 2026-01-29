@@ -61,7 +61,7 @@ class loraAttentionBlock(nn.Module):
         x_norm = self.base.norm(x_flat)
         base_qkv = self.base.qkv(x_norm)
 
-        lora_qkv = torch.cat([self.lora_q(x_flat), self.lora_k(x_flat), self.lora_v(x_flat)], dim=1)*self.scaling
+        lora_qkv = torch.cat([self.lora_q(x_norm), self.lora_k(x_norm), self.lora_v(x_norm)], dim=1)*self.scaling
         h = self.base.attention(base_qkv + lora_qkv)
         h_final = self.base.proj_out(h) + self.lora_proj_out(h)*self.scaling
         desired_output = (x_flat + h_final).reshape(b, c, *spatial)
